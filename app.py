@@ -136,7 +136,7 @@ with abas[0]:
             linha_chuva = df_chuva[df_chuva['data'] == dt]
             chuva_d = float(linha_chuva['chuva_diaria'].sum()) if not linha_chuva.empty else 0.0
             
-            res_dt = {'Data': dt, 'Chuva_Diaria':智慧chuva_d}
+            res_dt = {'Data': dt, 'Chuva_Diaria': chuva_d}
             for param in lista_parametros:
                 res_dt[param] = rodar_inferencia(param, acumulados_dt)
             lista_resultados.append(res_dt)
