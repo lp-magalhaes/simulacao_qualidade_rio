@@ -95,7 +95,7 @@ def rodar_inferencia(parametro, inputs_calculados):
     if modelo != "mock" and modelo is not None:
         df_input = pd.DataFrame([reacao_inputs])
         predicao = modelo.predict(df_input)
-        return float(predicao)
+        return float(predicao[0])
     else:
         soma = sum(list(reacao_inputs.values()))
         if parametro == 'Turbidez': return max(2.0, 5.0 + soma * 0.4)
