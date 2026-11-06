@@ -202,7 +202,7 @@ with abas[1]:
     with col_ia1:
         parametro_ia = st.selectbox("Parâmetro de Resiliência Analisado:", lista_parametros, key="param_ia")
     with col_ia2:
-        volume_choque = st.slider("Volume Adicional de Chuva Injetado no Dia 5 (mm):", min_value=10.0, max_value=150.0, value=60.0, step=5.0)
+        volume_choque = st.slider("Volume Adicional de Chuva Injetado no Dia 5 (mm):", min_value=0.0, max_value=150.0, value=0.0, step=5.0)
 
     # 1. Definição da Data Âncora fixa e Extração do Histórico Real
     data_ancora = datetime(2026, 1, 1)
