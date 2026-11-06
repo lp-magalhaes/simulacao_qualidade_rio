@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 1. CARREGAMENTO DOS MODELOS (.pkl) ---
+# --- 1. CARREGAMENTO RIGOROSO DOS MODELOS (.pkl) ---
 @st.cache_resource
 def carregar_modelos():
     modelos = {}
@@ -26,12 +26,22 @@ def carregar_modelos():
         'Carbono Orgânico Total': 'modelo_RandomForest_Carbono Orgânico Total.pkl'
     }
     
+    arquivos_faltantes = []
+    
     for parametro, arquivo in arquivos_modelos.items():
         if os.path.exists(arquivo):
             with open(arquivo, 'rb') as f:
                 modelos[parametro] = pickle.load(f)
         else:
-            modelos[parametro] = "mock"
+            arquivos_faltantes.append(arquivo)
+            
+    # Se houver qualquer modelo faltando, interrompe o app com um alerta crítico
+    if arquivos_faltantes:
+        st.error("🚨 **Erro Crítico de Inicialização:** Os seguintes arquivos de modelo (.pkl) obrigatórios não foram encontrados no repositório:")
+        for arq in arquivos_faltantes:
+            st.markdown(f"- `{arq}`")
+        st.info("Por favor, faça o upload dos arquivos ausentes na raiz do seu repositório do GitHub para liberar o motor do Gêmeo Digital.")
+        st.stop() # Trava a execução do Streamlit aqui de forma segura
             
     return modelos
 
@@ -44,18 +54,12 @@ def carregar_e_consolidar_chuva():
     if os.path.exists(nome_arquivo):
         df_horario = pd.read_excel(nome_arquivo)
         df_horario['data'] = pd.to_datetime(df_horario['data'])
-        # Agrupa os registros horários por dia e soma a precipitação
         df_diario = df_horario.groupby(df_horario['data'].dt.date)['chuva_diaria'].sum().reset_index()
         df_diario['data'] = pd.to_datetime(df_diario['data'])
         return df_diario
     else:
-        data_inicio = datetime(2025, 7, 11)
-        data_fim = datetime(2026, 10, 5)
-        datas = pd.date_range(start=data_inicio, end=data_fim, freq='D')
-        np.random.seed(42)
-        chuva_diaria = np.random.exponential(scale=3.5, size=len(datas))
-        df = pd.DataFrame({'data': datas, 'chuva_diaria': chuva_diaria})
-        return df
+        st.error(f"🚨 **Tabela de Entrada Ausente:** O arquivo `{nome_arquivo}` não foi localizado na raiz do repositório.")
+        st.stop()
 
 df_chuva = carregar_e_consolidar_chuva()
 
@@ -75,9 +79,9 @@ def calcular_acumulados_para_data(df, data_alvo):
         'chuva_60_dias_acum': obter_soma(60)
     }
 
-# --- 3. MOTOR DE INFERÊNCIA COESIVO (Usa DataFrame para evitar TypeError) ---
+# --- 3. MOTOR DE INFERÊNCIA PURO (Apenas Modelos Reais) ---
 def rodar_inferencia(parametro, inputs_calculados):
-    modelo = modelos.get(parametro)
+    modelo = modelos[parametro] # Garante chamada direta ao dicionário verificado
     
     if parametro in ['Turbidez', 'Vazão', 'Sólido Total', 'Ferro Total']:
         reacao_inputs = {
@@ -92,19 +96,11 @@ def rodar_inferencia(parametro, inputs_calculados):
             'chuva_7_dias_acum': inputs_calculados['chuva_7_dias_acum']
         }
                          
-    if modelo != "mock" and modelo is not None:
-        df_input = pd.DataFrame([reacao_inputs])
-        predicao = modelo.predict(df_input)
-        return float(predicao[0])
-    else:
-        soma = sum(list(reacao_inputs.values()))
-        if parametro == 'Turbidez': return max(2.0, 5.0 + soma * 0.4)
-        if parametro == 'Vazão': return max(0.5, 12.0 + soma * 0.15)
-        if parametro == 'Sólido Total': return max(10.0, 35.0 + soma * 1.2)
-        if parametro == 'Ferro Total': return max(0.01, 0.05 + soma * 0.003)
-        if parametro == 'Clorofila-a': return max(0.1, 18.0 - (soma * 0.05))
-        if parametro == 'Carbono Orgânico Total': return max(0.5, 3.0 + soma * 0.08)
-    return 0.0
+    df_input = pd.DataFrame([reacao_inputs])
+    predicao = modelo.predict(df_input)
+    return float(predicao[0])
+
+    
 # --- 4. INTERFACE GRÁFICA DO USUÁRIO ---
 st.title("🌊 Gêmeo Digital de Corpos Hídricos")
 st.markdown("### Motor de Simulação de Resiliência e Homeostase Ecossistêmica")
