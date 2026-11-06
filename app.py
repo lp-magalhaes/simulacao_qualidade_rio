@@ -37,22 +37,41 @@ def carregar_modelos():
 
 modelos = carregar_modelos()
 
-# --- 2. BASE DE DADOS DE CHUVA HISTÓRICA (11/07/2025 a 05/10/2026) ---
+# --- 2. CARREGAMENTO E CONSOLIDAÇÃO HORÁRIA DO EXCEL PARA A MEMÓRIA RAM ---
 @st.cache_data
-def carregar_dados_chuva():
-    data_inicio = datetime(2025, 7, 11)
-    data_fim = datetime(2026, 10, 5)
-    datas = pd.date_range(start=data_inicio, end=data_fim, freq='D')
+def carregar_e_consolidar_chuva():
+    nome_arquivo = 'dados_chuva.xlsx'
     
-    np.random.seed(42)
-    chuva_diaria = np.random.exponential(scale=3.5, size=len(datas))
-    chuva_diaria[np.random.choice(len(datas), 12)] = np.random.uniform(40, 90, 12)
-    
-    df = pd.DataFrame({'data': datas, 'chuva_diaria': chuva_diaria})
-    return df
+    if os.path.exists(nome_arquivo):
+        # Lê a tabela horária do repositório
+        df_horario = pd.read_excel(nome_arquivo)
+        
+        # Mapeamento padrão esperado (Ajustável de acordo com as colunas reais do usuário)
+        # Identifica dinamicamente ou assume 'data_hora' e 'chuva'
+        col_tempo = [c for c in df_horario.columns if 'data' in c.lower() or 'time' in c.lower()][0]
+        col_chuva = [c for c in df_horario.columns if 'chuva' in c.lower() or 'precip' in c.lower() or 'pms' in c.lower()][0]
+        
+        df_horario[col_tempo] = pd.to_datetime(df_horario[col_tempo])
+        
+        # Agrupamento e Soma das 24 horas de cada dia na memória
+        df_diario = df_horario.groupby(df_horario[col_tempo].dt.date)[col_chuva].sum().reset_index()
+        df_diario.columns = ['data', 'chuva_diaria']
+        df_diario['data'] = pd.to_datetime(df_diario['data'])
+    else:
+        # Fallback de dados sintéticos caso o arquivo excel não esteja presente (Evita quebra no deploy inicial)
+        data_inicio = datetime(2025, 7, 11)
+        data_fim = datetime(2026, 10, 5)
+        datas = pd.date_range(start=data_inicio, end=data_fim, freq='D')
+        np.random.seed(42)
+        chuva_diaria = np.random.exponential(scale=3.5, size=len(datas))
+        chuva_diaria[np.random.choice(len(datas), 12)] = np.random.uniform(40, 90, 12)
+        df_diario = pd.DataFrame({'data': datas, 'chuva_diaria': chuva_diaria})
+        
+    return df_diario
 
-df_chuva = carregar_dados_chuva()
+df_chuva = carregar_e_consolidar_chuva()
 
+# --- FUNÇÕES AUXILIARES DE CÁLCULO DE ACUMULADOS ---
 def calcular_acumulados_para_data(df, data_alvo):
     dt_alvo = pd.to_datetime(data_alvo)
     
@@ -86,12 +105,12 @@ def rodar_inferencia(parametro, inputs_calculados):
         return float(modelo.predict([reacao_inputs]))
     else:
         soma = sum(reacao_inputs)
-        if parametro == 'Turbidez': return max(2.0, 5.0 + soma * 0.4)
-        if parametro == 'Vazão': return max(0.5, 12.0 + soma * 0.15)
-        if parametro == 'Sólido Total': return max(10.0, 35.0 + soma * 1.2)
-        if parametro == 'Ferro Total': return max(0.01, 0.05 + soma * 0.003)
-        if parametro == 'Clorofila-a': return max(0.1, 18.0 - (soma * 0.05))
-        if parametro == 'Carbono Orgânico Total': return max(0.5, 3.0 + soma * 0.08)
+        if parametro == 'Turbidez': return max(2.0, 5.0 + soma * 0.35)
+        if parametro == 'Vazão': return max(0.5, 10.0 + soma * 0.12)
+        if parametro == 'Sólido Total': return max(10.0, 30.0 + soma * 1.1)
+        if parametro == 'Ferro Total': return max(0.01, 0.04 + soma * 0.002)
+        if parametro == 'Clorofila-a': return max(0.1, 20.0 - (soma * 0.04))
+        if parametro == 'Carbono Orgânico Total': return max(0.5, 2.5 + soma * 0.07)
     return 0.0
 
 st.title("🌊 Gêmeo Digital de Corpos Hídricos")
@@ -99,10 +118,10 @@ st.markdown("### Motor de Simulação de Resiliência e Homeostase Ecossistêmic
 
 abas = st.tabs(["📅 Simulação Temporal (30 Dias)", "🕹️ Teste de Estresse e Homeostase"])
 
-# --- ABA 1: SIMULAÇÃO TEMPORAL ---
+# --- ABA 1: SIMULAÇÃO TEMPORAL (30 DIAS) ---
 with abas[0]:
     st.header("Análise Dinâmica de Série Temporal")
-    col_input1, col_input2 = st.columns(2)
+    col_input1, col_input2 = st.columns([1, 2])
     
     with col_input1:
         data_minima = datetime(2025, 7, 11).date()
@@ -116,6 +135,8 @@ with abas[0]:
         )
         
         valores_acum_ref = calcular_acumulados_para_data(df_chuva, data_selecionada)
+        st.write("#### Entrada Acumulada Calculada")
+        st.metric("Chuva Acumulada (7d)", f"{valores_acum_ref['chuva_7_dias_acum']:.1f} mm")
         st.metric("Chuva Acumulada (30d)", f"{valores_acum_ref['chuva_30_dias_acum']:.1f} mm")
         st.metric("Chuva Acumulada (60d)", f"{valores_acum_ref['chuva_60_dias_acum']:.1f} mm")
         
@@ -125,7 +146,7 @@ with abas[0]:
         
         for dt in datas_simuladas:
             acumulados_dt = calcular_acumulados_para_data(df_chuva, dt)
-            res_dt = {'Data': dt, 'Chuva_Diaria': float(df_chuva[df_chuva['data'] == dt.date()]['chuva_diaria'].sum())}
+            res_dt = {'Data': dt, 'Chuva_Diaria': float(df_chuva[df_chuva['data'] == dt]['chuva_diaria'].sum())}
             for param in modelos.keys():
                 res_dt[param] = rodar_inferencia(param, acumulados_dt)
             lista_resultados.append(res_dt)
@@ -134,19 +155,21 @@ with abas[0]:
         
         st.subheader(f"Status dos Parâmetros em {data_selecionada.strftime('%d/%m/%Y')}")
         m1, m2, m3 = st.columns(3)
-        m1.metric("Vazão", f"{df_projecao.loc[0, 'Vazão']:.2f} m³/s")
-        m2.metric("Turbidez", f"{df_projecao.loc[0, 'Turbidez']:.1f} NTU")
-        m3.metric("Sólidos Totais", f"{df_projecao.loc[0, 'Sólido Total']:.1f} mg/L")
+        idx_hoje = df_projecao[df_projecao['Data'] == pd.to_datetime(data_selecionada)].index[0]
+        m1.metric("Vazão", f"{df_projecao.loc[idx_hoje, 'Vazão']:.2f} m³/s")
+        m2.metric("Turbidez", f"{df_projecao.loc[idx_hoje, 'Turbidez']:.1f} NTU")
+        m3.metric("Sólidos Totais", f"{df_projecao.loc[idx_hoje, 'Sólido Total']:.1f} mg/L")
+        
         m4, m5, m6 = st.columns(3)
-        m4.metric("Ferro Total", f"{df_projecao.loc[0, 'Ferro Total']:.2f} mg/L")
-        m5.metric("Clorofila-a", f"{df_projecao.loc[0, 'Clorofila-a']:.1f} µg/L")
-        m6.metric("COT", f"{df_projecao.loc[0, 'Carbono Orgânico Total']:.1f} mg/L")
+        m4.metric("Ferro Total", f"{df_projecao.loc[idx_hoje, 'Ferro Total']:.3f} mg/L")
+        m5.metric("Clorofila-a", f"{df_projecao.loc[idx_hoje, 'Clorofila-a']:.1f} µg/L")
+        m6.metric("COT", f"{df_projecao.loc[idx_hoje, 'Carbono Orgânico Total']:.1f} mg/L")
 
     st.markdown("---")
     st.subheader("📈 Comportamento Integrado e Dinâmico do Rio (Próximos 30 dias)")
     
     param_selecionados = st.multiselect(
-        "Selecione os Parâmetros para Monitoramento do Fluxo:",
+        "Selecione os Parâmetros para Monitoramento Integrado:",
         options=list(modelos.keys()),
         default=['Vazão', 'Turbidez', 'Carbono Orgânico Total']
     )
@@ -168,14 +191,15 @@ with abas[0]:
                 title=param_selecionados[idx],
                 overlaying='y',
                 side='right',
-                position=1 - (idx * 0.05)
+                position=1 - (idx * 0.05),
+                showgrid=False
             )
             
         fig_temporal.update_layout(
-            xaxis=dict(title="Cronograma da Simulação"),
+            xaxis=dict(title="Cronograma da Simulação (Projeção Temporal)"),
             yaxis=dict(title=param_selecionados[0]),
             template="plotly_dark",
-            margin=dict(l=40, r=40, t=20, b=40),
+            margin=dict(l=40, r=40, t=40, b=40),
             **layout_axes
         )
         st.plotly_chart(fig_temporal, use_container_width=True)
@@ -195,7 +219,6 @@ with abas[1]:
         
     dias_estudo = 60
     eixo_tempo = np.arange(0, dias_estudo + 1)
-    
     linha_de_base = np.full(len(eixo_tempo), valor_estabilidade)
     curva_resposta = []
     
@@ -207,7 +230,7 @@ with abas[1]:
             curva_resposta.append(valor_estabilidade)
         elif dia_pulso_inicio <= t <= dia_pulso_fim:
             fator_subida = (t - dia_pulso_inicio) / (dia_pulso_fim - dia_pulso_inicio)
-            valor_atual = valor_estabilidade + (valor_estabilidade * (magnitude_choque - 1) * fator_subida)
+            valor_atual = valor_estabilidade + (valor_estabilidade * (magnitude_choque - 1) * Fator_subida)
             curva_resposta.append(valor_atual)
         else:
             t_decorrido = t - dia_pulso_fim
@@ -241,7 +264,7 @@ with abas[1]:
     fig_homeostase = go.Figure()
     fig_homeostase.add_trace(go.Scatter(x=eixo_tempo, y=curva_resposta, mode='lines+markers', name='Resposta Dinâmica do Rio', line=dict(color='#00ffcc', width=3)))
     fig_homeostase.add_trace(go.Scatter(x=eixo_tempo, y=linha_de_base, mode='lines', name='Linha de Base (Equilíbrio)', line=dict(color='white', dash='dash')))
-
+    
     fig_homeostase.add_trace(go.Scatter(
         x=np.concatenate([eixo_tempo, eixo_tempo[::-1]]),
         y=np.concatenate([np.full(len(eixo_tempo), limiar_superior), np.full(len(eixo_tempo), limiar_inferior)[::-1]]),
@@ -251,11 +274,11 @@ with abas[1]:
         hoverinfo='skip',
         name='Banda de Homeostase (±5%)'
     ))
-
+    
     fig_homeostase.add_vline(x=dia_pulso_fim, line_width=1.5, line_dash="dot", line_color="orange", annotation_text="Fim do Evento")
     if tempo_recuperacao > 0:
         fig_homeostase.add_vline(x=dia_pulso_fim + tempo_recuperacao, line_width=1.5, line_dash="dot", line_color="lime", annotation_text="Estabilização")
-
+        
     fig_homeostase.update_layout(
         title=f"Curva de Resiliência do Sistema de Controle - {parametro_estudo}",
         xaxis_title="Dias de Simulação",
