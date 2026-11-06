@@ -105,9 +105,9 @@ def rodar_inferencia(parametro, inputs_calculados):
 st.title("🌊 Gêmeo Digital de Corpos Hídricos")
 st.markdown("### Motor de Simulação de Resiliência e Homeostase Ecossistêmica")
 
-abas = st.tabs(["📅 Simulação Temporal (30 Dias)", "🕹️ Teste de Estresse e Homeostase"])
+abas = st.tabs(["📅 Simulação Temporal (30 Dias)", "🕹️ Teste de Estresse por IA (Homeostase)"])
 
-# ABA 1: SIMULAÇÃO TEMPORAL
+# ABA 1: SIMULAÇÃO TEMPORAL (Mantém a lógica da série histórica)
 with abas[0]:
     st.header("Análise Dinâmica de Série Temporal")
     col_input1, col_input2 = st.columns(2)
@@ -182,70 +182,100 @@ with abas[0]:
             
         fig_temporal.update_layout(
             xaxis=dict(title="Cronograma da Simulação"),
-            yaxis=dict(title=param_selecionados[0]),
+            yaxis=dict(title=param_selecionados),
             template="plotly_dark", **layout_axes
         )
         st.plotly_chart(fig_temporal, use_container_width=True)
 
-# ABA 2: CÁLCULO DE HOMEOSTASE E TEMPO DE RECUPERAÇÃO
+# ABA 2: TESTE DE CHOQUE REAL CONECTADO ÀS INTELIGÊNCIAS ARTIFICIAIS (.PKL)
 with abas[1]:
-    st.header("Simulador de Choque e Resiliência de Sistemas de Controle")
-    st.markdown("Modela a estabilidade homeostática do ecossistema simulando uma perturbação de pulso controlado.")
+    st.header("Simulador de Resiliência de IA - Resposta ao Impulso de Chuva")
+    st.markdown("Injeta um pulso isolado de chuva em um único dia para mapear a sensibilidade e o tempo de esvaziamento da memória hidrológica através dos seus modelos reais.")
     
-    col_par1, col_par2, col_par3 = st.columns(3)
-    with col_par1:
-        parametro_estudo = st.selectbox("Parâmetro Biogequímico de Estudo:", lista_parametros)
-    with col_par2:
-        valor_estabilidade = st.number_input("Definir Linha de Base (Condição Normal do Rio):", value=20.0, step=1.0)
-    with col_par3:
-        magnitude_choque = st.slider("Magnitude do Estresse Climático (Pico do Pulso):", 1.5, 5.0, 2.5, step=0.1)
+    col_ia1, col_ia2 = st.columns(2)
+    with col_ia1:
+        parametro_ia = st.selectbox("Parâmetro de Resiliência Analisado:", lista_parametros, key="param_ia")
+    with col_ia2:
+        volume_choque = st.slider("Volume do Pulso de Chuva no Dia 5 (mm):", min_value=10.0, max_value=150.0, value=60.0, step=5.0)
+
+    # 1. Construção das Séries Temporais Sintéticas de Chuva na RAM
+    dias_sim_ia = 70  # Estendemos para cobrir a janela máxima de 60 dias perfeitamente
+    eixo_dias = np.arange(0, dias_sim_ia + 1)
+    
+    # Criamos os DataFrames temporários simulando estabilidade de seca total (0 mm)
+    df_controle = pd.DataFrame({'data': [datetime(2030, 1, 1) + timedelta(days=int(i)) for i in eixo_dias], 'chuva_diaria': 0.0})
+    df_choque = df_controle.copy()
+    df_choque.loc[5, 'chuva_diaria'] = volume_choque  # Aplica a chuva severa isolada estritamente no Dia 5
+
+    # 2. Rodando as Predições nos Dois Cenários
+    variacoes_percentuais = []
+    
+    for t in eixo_dias:
+        dt_atual = df_controle.loc[t, 'data']
         
-    dias_estudo = 60
-    eixo_tempo = np.arange(0, dias_estudo + 1)
-    linha_de_base = np.full(len(eixo_tempo), valor_estabilidade)
-    curva_resposta = []
-    
-    dia_pulso_inicio = 5
-    dia_pulso_fim = 8
-    
-    for t in eixo_tempo:
-        if t < dia_pulso_inicio:
-            curva_resposta.append(valor_estabilidade)
-        elif dia_pulso_inicio <= t <= dia_pulso_fim:
-            fator_subida = (t - dia_pulso_inicio) / (dia_pulso_fim - dia_pulso_inicio)
-            curva_resposta.append(valor_estabilidade + (valor_estabilidade * (magnitude_choque - 1) * fator_subida))
+        # Calcula as matrizes de janelas móveis para ambos os cenários naquele dia t
+        acum_controle = calcular_acumulados_para_data(df_controle, dt_atual)
+        acum_choque = calcular_acumulados_para_data(df_choque, dt_atual)
+        
+        # Faz a inferência real nos seus modelos treinados .pkl
+        pred_controle = rodar_inferencia(parametro_ia, acum_controle)
+        pred_choque = rodar_inferencia(parametro_ia, acum_choque)
+        
+        # Calcula a variação relativa percentual (Eixo Y centrado no zero estável)
+        if pred_controle != 0:
+            delta_p = ((pred_choque - pred_controle) / pred_controle) * 100
         else:
-            t_decorrido = t - dia_pulso_fim
-            decaimento = np.exp(-0.15 * t_decorrido) * np.cos(0.2 * t_decorrido)
-            curva_resposta.append(valor_estabilidade + (valor_estabilidade * (magnitude_choque - 1) * decaimento))
-            
-    curva_resposta = np.array(curva_resposta)
-    limiar_superior, limiar_inferior = valor_estabilidade * 1.05, valor_estabilidade * 0.95
-    
-    tempo_recuperacao = 0
-    for t in range(len(eixo_tempo) - 1, dia_pulso_fim, -1):
-        if not (limiar_inferior <= curva_resposta[t] <= limiar_superior):
-            tempo_recuperacao = (t + 1) - dia_pulso_fim
+            delta_p = 0.0
+        variacoes_percentuais.append(delta_p)
+        
+    variacoes_percentuais = np.array(variacoes_percentuais)
+
+    # 3. Métricas Inteligentes Calculadas Dinamicamente
+    # Tempo de Reação: Primeiro dia após o dia 5 em que o modelo altera seu output além de uma variação insignificante (ex: >0.1%)
+    dia_reacao = None
+    for t in range(6, len(eixo_dias)):
+        if abs(variacoes_percentuais[t]) > 0.1:
+            dia_reacao = t - 5
             break
             
-    c_kpi1, c_kpi2, c_kpi3 = st.columns(3)
-    c_kpi1.metric("Pico Registrado no Distúrbio", f"{curva_resposta.max():.2f}")
-    c_kpi2.metric("Faixa de Controle Estável (±5%)", f"{limiar_inferior:.2f} a {limiar_superior:.2f}")
-    c_kpi3.metric("⏱️ Tempo de Recuperação", f"{tempo_recuperacao} dias" if tempo_recuperacao > 0 else "Imediato / Estável")
-        
-    fig_homeostase = go.Figure()
-    fig_homeostase.add_trace(go.Scatter(x=eixo_tempo, y=curva_resposta, mode='lines+markers', name='Resposta Dinâmica', line=dict(color='#00ffcc', width=3)))
-    fig_homeostase.add_trace(go.Scatter(x=eixo_tempo, y=linha_de_base, mode='lines', name='Linha de Base', line=dict(color='white', dash='dash')))
+    # Tempo de Retorno: Mapeia quando o sistema volta e permanece estável dentro da banda de conformidade (±5% do desvio induzido, ou seja, entre -5% e +5%)
+    dia_estabilizacao = 0
+    for t in range(len(eixo_dias) - 1, 5, -1):
+        if not (-5.0 <= variacoes_percentuais[t] <= 5.0):
+            dia_estabilizacao = t - 5
+            break
+
+    c_ia1, c_ia2, c_ia3 = st.columns(3)
+    c_ia1.metric("Impacto Máximo Registrado", f"{variacoes_percentuais[np.argmax(np.abs(variacoes_percentuais))]:+.1f}%")
+    c_ia2.metric("⏱️ Tempo de Reação do Parâmetro", f"{dia_reacao} dia" if dia_reacao is not None else "Imediato")
+    c_ia3.metric("⏱️ Tempo de Retorno ao Normal (Homeostase)", f"{dia_estabilizacao} dias" if dia_estabilizacao > 0 else "Imediato / Sem Alteração Significativa")
+
+    # 4. Gráfico do Sistema de Controle Focado em Variação Percentual (Δ%)
+    fig_ia = go.Figure()
     
-    fig_homeostase.add_trace(go.Scatter(
-        x=np.concatenate([eixo_tempo, eixo_tempo[::-1]]),
-        y=np.concatenate([np.full(len(eixo_tempo), limiar_superior), np.full(len(eixo_tempo), limiar_inferior)[::-1]]),
-        fill='toself', fillcolor='rgba(0, 255, 0, 0.07)', line=dict(color='rgba(0,255,0,0)'), name='Banda ±5%'
+    # Linha Estável do Rio (0%)
+    fig_ia.add_trace(go.Scatter(x=eixo_dias, y=np.zeros(len(eixo_dias)), mode='lines', name='Estabilidade (Sem Chuva)', line=dict(color='white', dash='dash')))
+    
+    # Resposta Dinâmica da sua IA
+    fig_ia.add_trace(go.Scatter(x=eixo_dias, y=variacoes_percentuais, mode='lines+markers', name=f'Desvio de IA para {parametro_ia}', line=dict(color='#ff9900', width=3)))
+    
+    # Banda de Tolerância Estável de ±5% no eixo Y
+    fig_ia.add_trace(go.Scatter(
+        x=np.concatenate([eixo_dias, eixo_dias[::-1]]),
+        y=np.concatenate([np.full(len(eixo_dias), 5.0), np.full(len(eixo_dias), -5.0)[::-1]]),
+        fill='toself', fillcolor='rgba(0, 255, 0, 0.05)', line=dict(color='rgba(0,255,0,0)'), name='Zona Operacional Estável (±5%)'
     ))
-    
-    fig_homeostase.add_vline(x=dia_pulso_fim, line_width=1.5, line_dash="dot", line_color="orange", annotation_text="Fim do Evento")
-    if tempo_recuperacao > 0:
-        fig_homeostase.add_vline(x=dia_pulso_fim + tempo_recuperacao, line_width=1.5, line_dash="dot", line_color="lime", annotation_text="Estabilização")
-        
-    fig_homeostase.update_layout(title=f"Curva de Resiliência - {parametro_estudo}", xaxis_title="Dias", yaxis_title=parametro_estudo, template="plotly_dark", height=500)
-    st.plotly_chart(fig_homeostase, use_container_width=True)
+
+    # Âncoras Visuais do Evento Climático Futuro
+    fig_ia.add_vline(x=5, line_width=1.5, line_dash="dot", line_color="red", annotation_text="Pulso de Chuva")
+    if dia_estabilizacao > 0:
+        fig_ia.add_vline(x=5 + dia_estabilizacao, line_width=1.5, line_dash="dot", line_color="lime", annotation_text="Retorno ao Equilíbrio")
+
+    fig_ia.update_layout(
+        title=f"Curva de Memória e Sensibilidade por IA — {parametro_ia}",
+        xaxis_title="Dias do Experimento",
+        yaxis_title="Variação em Relação ao Controle (Δ %)",
+        template="plotly_dark",
+        height=520
+    )
+    st.plotly_chart(fig_ia, use_container_width=True)
