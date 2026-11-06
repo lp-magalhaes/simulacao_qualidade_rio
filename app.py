@@ -200,10 +200,10 @@ with abas[1]:
     with col_ia1:
         parametro_ia = st.selectbox("Parâmetro de Resiliência Analisado:", lista_parametros, key="param_ia")
     with col_ia2:
-        volume_choque = st.slider("Volume do Pulso de Chuva no Dia 5 (mm):", min_value=10.0, max_value=150.0, value=60.0, step=5.0)
+        volume_choque = st.slider("Volume do Pulso de Chuva no Dia 5 (mm):", min_value=0.0, max_value=150.0, value=0.0, step=5.0)
 
     # 1. Construção das Séries Temporais Sintéticas de Chuva na RAM
-    dias_sim_ia = 70  # Estendemos para cobrir a janela máxima de 60 dias perfeitamente
+    dias_sim_ia = 90  # Estendemos para cobrir a janela máxima de 60 dias perfeitamente
     eixo_dias = np.arange(0, dias_sim_ia + 1)
     
     # Criamos os DataFrames temporários simulando estabilidade de seca total (0 mm)
