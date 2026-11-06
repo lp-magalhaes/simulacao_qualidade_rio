@@ -180,10 +180,14 @@ with abas[0]:
                 side='right', position=1 - (idx * 0.05)
             )
             
+               # Une os nomes selecionados em uma única string legível
+        titulo_eixo_y = " / ".join(param_selecionados) if len(param_selecionados) <= 2 else "Valores dos Parâmetros"
+
         fig_temporal.update_layout(
             xaxis=dict(title="Cronograma da Simulação"),
-            yaxis=dict(title=param_selecionados),
-            template="plotly_dark", **layout_axes
+            yaxis=dict(title=titulo_eixo_y),  # <--- Corrigido com a string pura
+            template="plotly_dark", 
+            **layout_axes
         )
         st.plotly_chart(fig_temporal, use_container_width=True)
 
